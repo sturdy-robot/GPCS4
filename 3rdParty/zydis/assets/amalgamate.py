@@ -43,8 +43,7 @@ def find_include_path(
         path = search_path / include
         if path.exists():
             return path.absolute()
-    else:
-        raise FileNotFoundError(f'can\'t find header: {include}')
+    raise FileNotFoundError(f'can\'t find header: {include}')
 
 
 def merge_headers(
@@ -74,14 +73,7 @@ def merge_headers(
             *(f'//   - {x}' for x in stack)
         ]
 
-    filtered = [
-        f'',
-        f'//',
-        f'// Header: {header}',
-        *include_stack,
-        f'//',
-        f'',
-    ]
+    filtered = [f'', '//', f'// Header: {header}', *include_stack, '//', f'']
 
     # Copy over lines and recursively inline all headers.
     for line in lines:
@@ -89,7 +81,7 @@ def merge_headers(
         if not match:
             filtered.append(line)
             continue
-        
+
         # Recurse into includes.
         filtered += merge_headers(
             header=match.group(1), 
@@ -111,13 +103,7 @@ def merge_sources(*, source_dir: Path, covered_headers: Set[Path]):
         print(f'Processing source file "{source_file}"')
 
         # Print some comments to show where the code is from.
-        output += [
-            f'',
-            f'//',
-            f'// Source file: {source_file}',
-            f'//',
-            f'',
-        ]
+        output += [f'', '//', f'// Source file: {source_file}', '//', f'']
 
         # Read source file.
         with (source_dir / source_file).open() as f:

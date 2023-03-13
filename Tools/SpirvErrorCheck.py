@@ -531,8 +531,7 @@ OPCODE_TABLE = \
 
 def byte2int(byte):
     long_tuple=struct.unpack('L',byte)
-    long = long_tuple[0]
-    return long
+    return long_tuple[0]
 
 def ProcessHeader(src):
     word = byte2int(src.read(4))
@@ -562,7 +561,7 @@ def ProcessInstructions(src):
 
 
         print('offset: 0x{:08X}'.format(offset))
-        print('opname: {}'.format(OPCODE_TABLE[opcode]))
+        print(f'opname: {OPCODE_TABLE[opcode]}')
         print('opcode: 0x{:08X}'.format(opcode))
         print('length: 0x{:08X}'.format(word_count))
 
@@ -575,7 +574,7 @@ def ProcessInstructions(src):
                 break
 
             result_id = byte2int(word) # this may not be true for some opcodes, just for reference
-            print('result id: {}'.format(result_id))
+            print(f'result id: {result_id}')
 
             skip_offset = (word_count - 3) * 4
         else:
@@ -585,7 +584,7 @@ def ProcessInstructions(src):
 
         print('\n====\n')
 
-    print('Instruction count: {}'.format(inst_count))
+    print(f'Instruction count: {inst_count}')
 
 
 

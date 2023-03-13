@@ -117,8 +117,8 @@ def main():
         parts = macro_name[14:].split('_')
         parts = [item.capitalize() for item in parts]
         module_name = 'libSce' + ''.join(parts)
-        if not module_name.lower() in mod_set:
-            print('can not find:' + module_name);
+        if module_name.lower() not in mod_set:
+            print(f'can not find:{module_name}');
 
         name_list.append((macro_name, module_name))
 

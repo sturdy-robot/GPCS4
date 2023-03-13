@@ -103,18 +103,15 @@ ARCH_SEA_ISLANDS = 2
 InstDefDic = {}
 
 def WriteList(encoding, op_list):
-    dst_name = encoding + '.txt'
+    dst_name = f'{encoding}.txt'
     with open(dst_name, 'w') as dst:
         for opcode, value, mode in op_list:
-            line = '{}\t{}\t{}\n'.format(opcode, value, mode)
+            line = f'{opcode}\t{value}\t{mode}\n'
             dst.write(line)
 
 def IsOpInList(op_name, op_list):
 
-    for opcode, value, mode in op_list:
-        if opcode == op_name:
-            return True
-    return  False
+    return any(opcode == op_name for opcode, value, mode in op_list)
 
 def FindUniqueVOP3(op_dic, vop3_list):
     unique_vop3 = []
@@ -134,7 +131,7 @@ def GetOpKey(encoding, op_name):
     key_name = op_name
 
     if encoding == 'GCNENC_VOP3':
-        key_name = 'V3_' + op_name[2:]
+        key_name = f'V3_{op_name[2:]}'
     return key_name
 
 
@@ -158,21 +155,17 @@ def ParseOpType(op_name):
     dual_type_pat = re.compile('_(\S\d+)_(\S\d+)$')
     single_type_pat = re.compile('_(\S\d+)$')
 
-    m = dual_type_pat.search(op_name)
-    if m:
-        dst_type = m.group(1)
-        src_type = m.group(2)
-
+    if m := dual_type_pat.search(op_name):
+        dst_type = m[1]
+        src_type = m[2]
         # VINTRP special
         if 'P' in dst_type:
             dst_type = src_type
-    else:
-        m = single_type_pat.search(op_name)
-        if m:
-            src_type = m.group(1)
-            if 'X' in src_type:
-                src_type = 'Undefined'
-            dst_type = src_type
+    elif m := single_type_pat.search(op_name):
+        src_type = m[1]
+        if 'X' in src_type:
+            src_type = 'Undefined'
+        dst_type = src_type
     return dst_type, src_type
 
 def GetScalarType(op_type):
@@ -197,7 +190,7 @@ def GetScalarType(op_type):
     elif op_type in ['Undefined']:
         result = 'Undefined'
     else:
-        input('error type {}'.format(op_type))
+        input(f'error type {op_type}')
 
     return result
 
@@ -311,69 +304,66 @@ def GetInstCategory(ins_class):
 
 
 def WriteOpFormat(op_dic):
-    dst = open('OpFormat.cpp', 'w')
+    with open('OpFormat.cpp', 'w') as dst:
+        for encoding, op_list in op_dic.items():
 
-    for encoding, op_list in op_dic.items():
+            array_size = GetArraySize(op_list)
 
-        array_size = GetArraySize(op_list)
+            dst.write(
+                f"const std::array<GcnInstFormat, {array_size}> g_instructionFormat{encoding.replace('GCNENC_', '')} = {{{{\n"
+            )
 
-        dst.write('const std::array<GcnInstFormat, {}> g_instructionFormat{} = {{{{\n'.format(array_size, encoding.replace('GCNENC_', '')))
+            struct_array = ['\t{ },'] * array_size
+            for opcode, value, mode in op_list:
+                op_key = GetOpKey(encoding, opcode)
 
-        struct_array = ['\t{ },'] * array_size
-        for opcode, value, mode in op_list:
-            op_key = GetOpKey(encoding, opcode)
+                if op_key not in InstDefDic:
+                    #print('inst not found: {}'.format(op_key))
+                    continue
 
-            if not op_key in InstDefDic:
-                #print('inst not found: {}'.format(op_key))
-                continue
+                inst_info = InstDefDic[op_key]
+                cls = inst_info[0]
+                src_count = DefaultSrcCountTable[encoding]
+                dst_type, src_type = ParseOpType(opcode)
+                src_type = GetScalarType(src_type)
+                dst_type = GetScalarType(dst_type)
+                category = GetInstCategory(cls)
 
-            inst_info = InstDefDic[op_key]
-            cls = inst_info[0]
-            src_count = DefaultSrcCountTable[encoding]
-            dst_type, src_type = ParseOpType(opcode)
-            src_type = GetScalarType(src_type)
-            dst_type = GetScalarType(dst_type)
-            category = GetInstCategory(cls)
+                if 'GCN_SRC_NONE' in mode:
+                    src_count = 0
+                if 'GCN_SRC2_NONE' in mode:
+                    src_count -= 1
+                if 'GCN_VOP3_VOP2_DS01' in mode:
+                    src_count = 2
+                if 'GCN_VOP3_VOP1_DS0' in mode:
+                    src_count = 1
+                if 'GCN_VOP_ARG_NONE' in mode:
+                    src_count = 0
+                # VOPC in VOP3, specify 2 src operands
+                if encoding == 'GCNENC_VOP3' and (value >= 0 and value <= 247):
+                    src_count = 2
 
-            if 'GCN_SRC_NONE' in mode:
-                src_count = 0
-            if 'GCN_SRC2_NONE' in mode:
-                src_count -= 1
-            if 'GCN_VOP3_VOP2_DS01' in mode:
-                src_count = 2
-            if 'GCN_VOP3_VOP1_DS0' in mode:
-                src_count = 1
-            if 'GCN_VOP_ARG_NONE' in mode:
-                src_count = 0
-            # VOPC in VOP3, specify 2 src operands
-            if encoding == 'GCNENC_VOP3' and (value >= 0 and value <= 247):
-                src_count = 2
+                code_line = '\t// {} = {}\n\t{{ GcnInstClass::{}, GcnInstCategory::{}, {}, {},\n\t\tGcnScalarType::{}, GcnScalarType::{} }},'.\
+                    format(value, opcode, cls, category, src_count, 1, src_type, dst_type)
+                struct_array[value] = code_line
 
-            code_line = '\t// {} = {}\n\t{{ GcnInstClass::{}, GcnInstCategory::{}, {}, {},\n\t\tGcnScalarType::{}, GcnScalarType::{} }},'.\
-                format(value, opcode, cls, category, src_count, 1, src_type, dst_type)
-            struct_array[value] = code_line
-
-        dst.write('\n'.join(struct_array))
-        dst.write('\n}};\n\n\n')
-
-    dst.close()
+            dst.write('\n'.join(struct_array))
+            dst.write('\n}};\n\n\n')
 
 def WriteOpEnum(op_dic):
-    dst = open('OpEnum.cpp', 'w')
-    for encoding, op_list in op_dic.items():
+    with open('OpEnum.cpp', 'w') as dst:
+        for encoding, op_list in op_dic.items():
 
-        encoding_short = encoding.replace('GCNENC_', '')
-        dst.write('enum class GcnOpcode{} : uint32_t\n'.format(encoding_short))
-        dst.write('{\n')
+            encoding_short = encoding.replace('GCNENC_', '')
+            dst.write(f'enum class GcnOpcode{encoding_short} : uint32_t\n')
+            dst.write('{\n')
 
-        for opcode, value, mode in op_list:
-            dst.write('\t{} = {},\n'.format(opcode, value))
+            for opcode, value, mode in op_list:
+                dst.write(f'\t{opcode} = {value},\n')
 
-        max_op = GetMaxOpName(op_list)
-        dst.write('\n\tOP_RANGE_{} = {} + 1,\n'.format(encoding_short, max_op))
-        dst.write('};\n\n')
-
-    dst.close()
+            max_op = GetMaxOpName(op_list)
+            dst.write(f'\n\tOP_RANGE_{encoding_short} = {max_op} + 1,\n')
+            dst.write('};\n\n')
 
 def ProcessOpcodes(op_list):
     print('opcode count:{}'.format(len(op_list)))
@@ -381,7 +371,7 @@ def ProcessOpcodes(op_list):
     op_dic = {}
     for opcode, encoding, mode, value in op_list:
 
-        if not encoding in op_dic:
+        if encoding not in op_dic:
             op_dic[encoding] = []
 
         op_dic[encoding].append((opcode, value, mode))
@@ -405,29 +395,26 @@ def ProcessOpcodes(op_list):
 
 
 def ParseInstDefs(src_name):
-    src = open(src_name)
-    pat = re.compile('\{(.*),.*\{(.*),(.*)\}.*\}')
-    for line in src.readlines():
+    with open(src_name) as src:
+        pat = re.compile('\{(.*),.*\{(.*),(.*)\}.*\}')
+        for line in src:
+            if not line:
+                continue
+            line = line.rstrip('\n')
 
-        if not line:
-            continue
-        line = line.rstrip('\n')
+            m = pat.search(line)
+            if not m:
+                continue
 
-        m = pat.search(line)
-        if not m:
-            continue
+            op = m[1].strip().split('::')[1]
+            cls = m[2].strip().split('::')[1]
+            type = m[3].strip().split('::')[1]
+            type = TypeDic[type]
 
-        op = m.group(1).strip().split('::')[1]
-        cls = m.group(2).strip().split('::')[1]
-        type = m.group(3).strip().split('::')[1]
-        type = TypeDic[type]
+            if op in InstDefDic:
+                input(f'already in dic:{op}')
 
-        if op in InstDefDic:
-            input('already in dic:' + op)
-
-        InstDefDic[op] = (cls, type)
-
-    src.close()
+            InstDefDic[op] = (cls, type)
 
 
 # use
@@ -435,43 +422,36 @@ def ParseInstDefs(src_name):
 # in sublime to merge lines
 
 def main():
-    src = open('GCNInstructions.cpp')
+    with open('GCNInstructions.cpp') as src:
+        op_list = []
+        pat = re.compile('\{.*\}')
+        for line in src:
+            line = line.rstrip('\n')
+            if not line:
+                continue
+            m = pat.search(line)
+            if not m:
+                continue
 
-    op_list = []
-    pat = re.compile('\{.*\}')
-    for line in src.readlines():
-        line = line.rstrip('\n')
-        if not line:
-            continue
-        m = pat.search(line)
-        if not m:
-            continue
+            line = line.replace('{', '').replace('}', '')
+            parts = line.split(',')
+            parts = [x.strip() for x in parts if x]
 
-        line = line.replace('{', '').replace('}', '')
-        parts = line.split(',')
-        parts = [x.strip() for x in parts if x]
+            opcode = parts[0].replace('"', '').upper()
+            encoding = parts[1]
 
-        opcode = parts[0].replace('"', '').upper()
-        encoding = parts[1]
+            if encoding in ['GCNENC_VOP3A', 'GCNENC_VOP3B']:
+                encoding = 'GCNENC_VOP3'
 
-        if encoding == 'GCNENC_VOP3A' or encoding == 'GCNENC_VOP3B':
-            encoding = 'GCNENC_VOP3'
+            arch = parts[4]
+            arch_mask = ArchDic[arch]
+            if not arch_mask & ARCH_SEA_ISLANDS:
+                continue
 
-        mode = parts[2]
-        value_str = parts[3]
-        if 'x' in value_str:
-            op_value = int(parts[3], 16)
-        else:
-            op_value = int(parts[3])
-
-        arch = parts[4]
-        arch_mask = ArchDic[arch]
-        if not (arch_mask & ARCH_SEA_ISLANDS):
-            continue
-
-        op_list.append((opcode.upper(), encoding, mode, op_value))
-
-    src.close()
+            mode = parts[2]
+            value_str = parts[3]
+            op_value = int(parts[3], 16) if 'x' in value_str else int(parts[3])
+            op_list.append((opcode.upper(), encoding, mode, op_value))
 
     ParseInstDefs('GCNInstructionDefs.cpp')
     ProcessOpcodes(op_list)

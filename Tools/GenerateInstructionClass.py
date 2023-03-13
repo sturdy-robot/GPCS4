@@ -1322,43 +1322,41 @@ InsList = [
 ]
 
 def GenerateInsClassPairs(doc_filename):
-    src = open(doc_filename, encoding='utf8')
+    with open(doc_filename, encoding='utf8') as src:
+        pair_list = []
 
-    pair_list = []
+        lines = src.readlines()
+        cur_class = ''
+        for line in lines:
 
-    lines = src.readlines()
-    cur_class = ''
-    for line in lines:
+            if line == '\n':
+                continue
+            line = line.strip()
 
-        if line == '\n':
-            continue
-        line = line.strip()
+            # Get current class name
+            for section_name in InsClassMap.keys():
+                if section_name in line:
+                    cur_class = InsClassMap[section_name]
+                    break
 
-        # Get current class name
-        for section_name in InsClassMap.keys():
-            if section_name in line:
-                cur_class = InsClassMap[section_name]
-                break
+            for ins_name in InsList:
 
-        for ins_name in InsList:
+                match_name = ins_name
+                # fix V3_ prefix
+                if match_name[:3] == 'V3_':
+                    match_name = match_name.replace('V3_', 'V_')
 
-            match_name = ins_name
-            # fix V3_ prefix
-            if match_name[:3] == 'V3_':
-                match_name = match_name.replace('V3_', 'V_')
-
-            match_name = match_name.lower()
-            if match_name in line:
-                print('{} - {}'.format(ins_name, cur_class))
-                pair_list.append((ins_name, cur_class))
-    src.close()
+                match_name = match_name.lower()
+                if match_name in line:
+                    print(f'{ins_name} - {cur_class}')
+                    pair_list.append((ins_name, cur_class))
     return pair_list
 
 def FixLine(ins_pairs, old_line):
     new_line = old_line
 
     for ins_name, ins_cls in ins_pairs:
-        if not ins_name in old_line:
+        if ins_name not in old_line:
             continue
 
         new_line = old_line.replace('InstructionClassUnknown', ins_cls)
@@ -1366,20 +1364,15 @@ def FixLine(ins_pairs, old_line):
     return new_line
 
 def FixInsClass(src_filename, ins_pairs):
-    src = open(src_filename)
-    dst = open(src_filename + '.fix.cpp', 'w')
-
-    for line in src.readlines():
-        new_line = FixLine(ins_pairs, line)
-        dst.write(new_line)
-
-    dst.close()
-    src.close()
+    with open(src_filename) as src:
+        with open(f'{src_filename}.fix.cpp', 'w') as dst:
+            for line in src:
+                new_line = FixLine(ins_pairs, line)
+                dst.write(new_line)
 
 def main():
     ins_pair_list = GenerateInsClassPairs('GPU_Shader_Core_ISA_e.txt')
     FixInsClass('GCNInstructionDefs.cpp', ins_pair_list)
-    pass
 
 if __name__ == '__main__':
     main()

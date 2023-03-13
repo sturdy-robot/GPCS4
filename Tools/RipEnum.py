@@ -1,8 +1,8 @@
 
 def main():
-    with open('constants.h', encoding='utf-8') as src, open('new_const.h', 'w', encoding='utf-8') as dst:
+    with (open('constants.h', encoding='utf-8') as src, open('new_const.h', 'w', encoding='utf-8') as dst):
         dst_lines = []
-        for line in src.readlines():
+        for line in src:
             if 'typedef enum ' in line:
                 new_line = line.replace('typedef enum ', 'enum ')
                 dst_lines.append(new_line)

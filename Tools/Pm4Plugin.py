@@ -142,7 +142,7 @@ def filter_table(func_table):
         else:
             func_dic[gnm_name] += 1
             num = func_dic[gnm_name]
-            name = '{}{}'.format(gnm_name, num)
+            name = f'{gnm_name}{num}'
 
         new_table.append((name, packet_count, pm4type, opcode, handler, code_lines))
     return new_table
@@ -150,19 +150,18 @@ def filter_table(func_table):
 
 def get_enum_name(gnm_name):
     name = gnm_name[0].upper() + gnm_name[1:]
-    return 'kPacketCount{}'.format(name)
+    return f'kPacketCount{name}'
 
 
 def write_packet_count_enum(table):
-    fout = open('PacketEnum.h', 'w')
-    fout.write('enum PacketCount : uint32_t\n')
-    fout.write('{\n')
-    for (gnm_name, packet_count, pm4type, opcode, handler, code_lines) in table:
-        enum = get_enum_name(gnm_name)
-        line = '\t{} = {},\n'.format(enum, packet_count)
-        fout.write(line)
-    fout.write('};\n')
-    fout.close()
+    with open('PacketEnum.h', 'w') as fout:
+        fout.write('enum PacketCount : uint32_t\n')
+        fout.write('{\n')
+        for (gnm_name, packet_count, pm4type, opcode, handler, code_lines) in table:
+            enum = get_enum_name(gnm_name)
+            line = f'\t{enum} = {packet_count},\n'
+            fout.write(line)
+        fout.write('};\n')
 
 
 def get_max_code(table):
@@ -186,8 +185,7 @@ def get_max_code(table):
 
 
 def get_proxy_func_name(gnm_name):
-    name = 'GnmCommandProxy::{}'.format(gnm_name)
-    return name
+    return f'GnmCommandProxy::{gnm_name}'
 
 
 def get_code_name(opcode):
@@ -322,11 +320,11 @@ def get_code_name(opcode):
     }
 
     name = ''
-    if opcode not in op_dic:
-        name = 'IT_UNKNOWN_{:X}'.format(opcode)
-    else:
-        name = op_dic[opcode]
-    return name
+    return (
+        'IT_UNKNOWN_{:X}'.format(opcode)
+        if opcode not in op_dic
+        else op_dic[opcode]
+    )
 
 
 def write_function_array(table):
@@ -341,36 +339,34 @@ def write_function_array(table):
 
     ordered_table = OrderedDict(sorted(op_dic.items(), key=lambda obj: obj[0]))
 
-    fout = open('PacketArray.cpp', 'w')
-    max_code, max_sub_code = get_max_code(table)
-    head = 'const std::array<const std::array<ProxyFunction, {}>, {}> m_proxyTable = {{ {{\n'.format(max_sub_code + 1, max_code + 1)
-    fout.write(head)
-    last_opcode = -1
-    for opcode, proxy_list in ordered_table.items():
+    with open('PacketArray.cpp', 'w') as fout:
+        max_code, max_sub_code = get_max_code(table)
+        head = f'const std::array<const std::array<ProxyFunction, {max_sub_code + 1}>, {max_code + 1}> m_proxyTable = {{ {{\n'
+        fout.write(head)
+        last_opcode = -1
+        for opcode, proxy_list in ordered_table.items():
 
-        for i in range(last_opcode + 1, opcode):
-            fout.write('\t// {}\n'.format(get_code_name(i)))
-            fout.write('\t{ nullptr },\n')
-        last_opcode = opcode
+            for i in range(last_opcode + 1, opcode):
+                fout.write(f'\t// {get_code_name(i)}\n')
+                fout.write('\t{ nullptr },\n')
+            last_opcode = opcode
 
-        fout.write('\t// {}\n'.format(get_code_name(opcode)))
-        fout.write('\t{\n')
-        for proxy_func in proxy_list:
-            fout.write('\t\t&{},\n'.format(proxy_func))
-        fout.write('\t\tnullptr,\n')
+            fout.write(f'\t// {get_code_name(last_opcode)}\n')
+            fout.write('\t{\n')
+            for proxy_func in proxy_list:
+                fout.write(f'\t\t&{proxy_func},\n')
+            fout.write('\t\tnullptr,\n')
 
-        fout.write('\t},\n')
-        fout.write('\n')
+            fout.write('\t},\n')
+            fout.write('\n')
 
-    fout.write('} };\n')
-    fout.close()
+        fout.write('} };\n')
 
 
 def get_comment_func_body(code_lines):
     # get function body
     body = code_lines[2:-1]
-    comment = ['// ' + line + '\n' for line in body]
-    return comment
+    return [f'// {line}' + '\n' for line in body]
 
 
 def recover_gnm_name(name):
@@ -380,39 +376,40 @@ def recover_gnm_name(name):
 
 
 def define_proxy_function(name, code):
-    lines = []
-    lines.append('uint32_t {}(PPM4_TYPE_3_HEADER pm4Hdr)\n'.format(get_proxy_func_name(name)))
-    lines.append('{\n')
-
+    lines = [
+        f'uint32_t {get_proxy_func_name(name)}(PPM4_TYPE_3_HEADER pm4Hdr)\n',
+        '{\n',
+    ]
     comments = get_comment_func_body(code)
-    for comment in comments:
-        lines.append('\t' + comment)
-
-    lines.append('\n')
-
-    lines.append('\t' + 'uint32_t count = 0;\n')
-    lines.append('\t' + 'if (false)\n')
-    lines.append('\t' + '{\n')
-    lines.append('\t\t' + 'LOG_SCE_TRACE("Gnm: {}");\n'.format(recover_gnm_name(name)))
-    lines.append('\t\t' + '// m_cb->{}();\n'.format(recover_gnm_name(name)))
-    lines.append('\t\t' + 'count = {};\n'.format(get_enum_name(name)))
-    lines.append('\t' + '}\n')
-
-    lines.append('\n')
-
-    lines.append('\t' + 'return count;\n')
-
-    lines.append('}\n')
+    lines.extend('\t' + comment for comment in comments)
+    lines.extend(
+        (
+            '\n',
+            '\t' + 'uint32_t count = 0;\n',
+            '\t' + 'if (false)\n',
+            '\t' + '{\n',
+        )
+    )
+    lines.append('\t\t' + f'LOG_SCE_TRACE("Gnm: {recover_gnm_name(name)}");\n')
+    lines.append('\t\t' + f'// m_cb->{recover_gnm_name(name)}();\n')
+    lines.extend(
+        (
+            '\t\t' + f'count = {get_enum_name(name)};\n',
+            '\t' + '}\n',
+            '\n',
+            '\t' + 'return count;\n',
+            '}\n',
+        )
+    )
     return lines
 
 
 def write_proxy_function_list(table):
-    fout = open('PacketProxy.cpp', 'w')
-    for (gnm_name, packet_count, pm4type, opcode, handler, code_lines) in table:
-        proxy_func = define_proxy_function(gnm_name, code_lines)
-        fout.write(''.join(proxy_func))
-        fout.write('\n')
-    fout.close()
+    with open('PacketProxy.cpp', 'w') as fout:
+        for (gnm_name, packet_count, pm4type, opcode, handler, code_lines) in table:
+            proxy_func = define_proxy_function(gnm_name, code_lines)
+            fout.write(''.join(proxy_func))
+            fout.write('\n')
 
 
 def process_table(func_table):

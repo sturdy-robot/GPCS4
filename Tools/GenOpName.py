@@ -7,8 +7,8 @@ def CamelCaseSplit(identifier):
 
 if __name__ == '__main__':
 
-    with open('draw_func.txt') as src, open('enum.txt', 'w') as dst:
-        for line in src.readlines():
+    with (open('draw_func.txt') as src, open('enum.txt', 'w') as dst):
+        for line in src:
             line = line.rstrip('\n')
             parts = CamelCaseSplit(line)
             upper_parts = [word.upper() for word in parts]
